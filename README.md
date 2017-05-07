@@ -1,11 +1,34 @@
-# WebLS
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**
+
+- [Webls](#webls)
+  - [Features](#features)
+  - [Install](#install)
+  - [.index](#index)
+  - [TODO](#todo)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+# Webls
 
 Standalone HTTP File Index
 
+[Example](http://f.ammar.io)
+
 ## Features
     - Easy to use
+    - Disable directory listing
+    - Set maximum listing count for directory
+    - Range support
 
-<!--## .index
+## Install
+
+```bash
+go get -u github.com/ammario/webls
+```
+
+## .index
 
 `.index` files are JSON and configure how the directory it's in is displayed.
 
@@ -15,16 +38,13 @@ A `.index` file may look like (without the comments)
 {
     //only show first 1000 files
     "max_files": 1000,
-    //require password via basic auth
-    "password": "bluefish123",
     //don't index directory
     "hide": true,
 }
-```-->
+```
 
 ## TODO
-- Ranges
-- Clean up index code
 - Simple theming
-- Modifying listing parameters via `.index` files
-- Optional JSON listing
+- More `.index` parameters
+    - Optional basic auth
+- Optional JSON/CSV listing

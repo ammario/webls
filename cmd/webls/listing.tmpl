@@ -18,7 +18,8 @@
         }
     </style>
     <body>
-        Index of {{ range .dirs }}<a href="{{ .Compound }}">{{ .Dir }}</a>{{ end }} <br/>
+        Index of {{ range .Dirs }}<a href="{{ .Full }}">{{ .Segment }}</a>{{ end }} [{{ len .Files }} files] <br/>
+        <br/>
         <table>
             <thead>
                 <td> Name </td>
@@ -27,7 +28,7 @@
                 <td> Size </td>
             </thead>
             <tbody>
-                {{ range .files }}
+                {{ range .Files }}
                     <tr>
                         <td> <a href="{{.Path}}">{{ .Name }}</a> </td>
                         <td> {{ .LastModified }} </td>
@@ -37,6 +38,7 @@
                 {{ end }}
             </tbody>
         </table>
-        </pre>
+        <br/>
+        Powered by  {{ if .BrandURL }}<a href="{{.BrandURL}}">{{end}}{{.Brand}} {{ if .BrandURL }}</a>{{end}}
     </body>
 </html>

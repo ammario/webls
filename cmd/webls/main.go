@@ -15,6 +15,8 @@ import (
 func main() {
 	//flags
 	var (
+		brand    = kingpin.Flag("brand", "brand displayed on the bottom of all listings").Default("webls").String()
+		brandURL = kingpin.Flag("brand-url", "url which brand is linked to").Default("//github.com/ammario/webls").String()
 		root     = kingpin.Arg("root", "directory to serve").Required().ExistingDir()
 		bindAddr = kingpin.Flag("address", "Address to bind to").Default(":80").String()
 	)
@@ -28,6 +30,8 @@ func main() {
 
 	//get listing template
 	index := &webls.Index{
+		Brand:           *brand,
+		BrandURL:        *brandURL,
 		ListingTemplate: template.Must(template.New("listing.tmpl").Funcs(webls.TemplateFuncs).Parse(string(MustAsset("listing.tmpl")))),
 		Root:            *root,
 		Log:             log,

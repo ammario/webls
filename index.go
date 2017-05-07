@@ -13,15 +13,10 @@ import (
 
 	"io/ioutil"
 
-	"io"
-
-	"mime"
-
 	"net/url"
 
 	"strings"
 
-	humanize "github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -33,6 +28,8 @@ var (
 
 //Index serves file's from root
 type Index struct {
+	Brand           string
+	BrandURL        string
 	ListingTemplate *template.Template
 	Log             *zap.Logger
 	Root            string
@@ -53,6 +50,13 @@ func (i *Index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	infos, err := ioutil.ReadDir(hostpath)
+	if err != nil {
+		//try to open path as file or fail
+		i.handleFile(hostpath, w, r)
+		return
+	}
+
 	config, err := i.Config(hostpath)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -61,68 +65,19 @@ func (i *Index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	infos, err := ioutil.ReadDir(hostpath)
-	if err != nil {
-		//try to open path as file or fail
-		i.handleFile(hostpath, w, r)
-		return
-	}
-
 	if config.Hide {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, "this directory is hidden")
+		fmt.Fprintf(w, "this directory has listing disabled")
 		return
 	}
 
-	if !strings.HasSuffix(cleaned, "/") {
-		cleaned += "/"
+	if config.MaxFiles > 0 && len(infos) > config.MaxFiles {
+		infos = infos[:config.MaxFiles]
 	}
 
-	//help template setup links to each directory in path
-	type dir struct {
-		Dir      string
-		Compound string
-	}
-	dirs := strings.Split(filepath.Dir(cleaned), "/")
-	compoundDirs := make([]dir, 0, len(dirs))
-	//setup root link
-	compoundDirs = append(compoundDirs, dir{
-		Dir:      "/",
-		Compound: "/",
-	})
-	for i := range dirs {
-		if dirs[i] == "" {
-			continue
-		}
-		compoundDirs = append(compoundDirs, dir{Dir: dirs[i] + "/", Compound: strings.Join(dirs[:i+1], "/") + "/"})
-	}
-
-	//prepare information for view
-	finfos := make([]Finfo, len(infos))
-	for i, info := range infos {
-		path := filepath.Join(cleaned, infos[i].Name())
-		name := info.Name()
-		if info.IsDir() {
-			path += "/"
-			name += "/"
-		}
-		typ, _, _ := mime.ParseMediaType(mime.TypeByExtension(filepath.Ext(name)))
-		finfos[i] = Finfo{
-			Path:         path,
-			Name:         name,
-			Type:         typ,
-			LastModified: info.ModTime().Format("01/02/2006 15:04:05"),
-			Size:         humanize.Bytes(uint64(info.Size())),
-		}
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if err := i.ListingTemplate.Execute(w, map[string]interface{}{
-		"dirs":  compoundDirs,
-		"files": finfos,
-	}); err != nil {
-		i.Log.Error("exec template", zap.Error(err))
-	}
+	//must be directory listing
+	i.handleDir(cleaned, hostpath, infos, w, r)
+	return
 }
 
 func (i *Index) handleFile(hostpath string, w http.ResponseWriter, r *http.Request) {
@@ -138,12 +93,37 @@ func (i *Index) handleFile(hostpath string, w http.ResponseWriter, r *http.Reque
 		i.Log.Error("open file", zap.Error(err))
 		return
 	}
-	if _, err := io.Copy(w, fi); err != nil {
+
+	info, err := fi.Stat()
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "failed to read file")
-		i.Log.Error("read file", zap.Error(err))
+		fmt.Fprintf(w, "failed to stat file")
+		i.Log.Error("stat file",
+			zap.String("file", fi.Name()),
+			zap.Error(err),
+		)
+		return
 	}
+
+	http.ServeContent(w, r, fi.Name(), info.ModTime(), fi)
 	return
+}
+
+func (i *Index) handleDir(cleaned string, hostpath string, infos []os.FileInfo, w http.ResponseWriter, r *http.Request) {
+	//better aesthetics
+	if !strings.HasSuffix(cleaned, "/") {
+		cleaned += "/"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := i.ListingTemplate.Execute(w, map[string]interface{}{
+		"Dirs":     SplitPath(cleaned),
+		"Files":    ConvertFileInfos(cleaned, infos),
+		"Brand":    i.Brand,
+		"BrandURL": i.BrandURL,
+	}); err != nil {
+		i.Log.Error("exec template", zap.Error(err))
+	}
 }
 
 //securePath secures the provided path
@@ -159,7 +139,9 @@ func (i *Index) securePath(path string) (cleaned string, hostpath string) {
 
 //Config returns the index config for a hostpath
 func (i *Index) Config(hostpath string) (*IndexConfig, error) {
-	indexFi, err := os.OpenFile(filepath.Dir(hostpath)+indexConfigName, os.O_RDONLY, 0640)
+	confName := hostpath + "/" + indexConfigName
+	i.Log.Debug(".index check", zap.String("name", confName))
+	indexFi, err := os.OpenFile(confName, os.O_RDONLY, 0640)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return DefaultIndexConfig, nil
@@ -173,4 +155,30 @@ func (i *Index) Config(hostpath string) (*IndexConfig, error) {
 		return nil, errors.Wrap(err, "failed to decode config")
 	}
 	return iconfig, nil
+}
+
+//CompoundPath contains a fragment of a path and all of it's preceding paths
+type CompoundPath struct {
+	Full    string
+	Segment string
+}
+
+//SplitPath splits a path into it's compound paths
+func SplitPath(path string) []CompoundPath {
+	dirs := strings.Split(filepath.Dir(path), "/")
+
+	cpaths := make([]CompoundPath, 0, len(dirs))
+	//setup root link
+	cpaths = append(cpaths, CompoundPath{
+		Full:    "/",
+		Segment: "/",
+	})
+
+	for i := range dirs {
+		if dirs[i] == "" {
+			continue
+		}
+		cpaths = append(cpaths, CompoundPath{Segment: dirs[i] + "/", Full: strings.Join(dirs[:i+1], "/") + "/"})
+	}
+	return cpaths
 }
