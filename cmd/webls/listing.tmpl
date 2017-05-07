@@ -1,0 +1,42 @@
+<html>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: black;
+            color: #18e849;
+        }
+        a:visited {
+            color: #4918e8;
+        }
+        a {
+            color: #18e849;
+        }
+        div {
+            -webkit-column-count: 3; /* Chrome, Safari, Opera */
+            -moz-column-count: 3; /* Firefox */
+            column-count: 3;
+        }
+    </style>
+    <body>
+        Index of {{ range .dirs }}<a href="{{ .Compound }}">{{ .Dir }}</a>{{ end }} <br/>
+        <table>
+            <thead>
+                <td> Name </td>
+                <td> Last Modified </td>
+                <td> Type </td>
+                <td> Size </td>
+            </thead>
+            <tbody>
+                {{ range .files }}
+                    <tr>
+                        <td> <a href="{{.Path}}">{{ .Name }}</a> </td>
+                        <td> {{ .LastModified }} </td>
+                        <td> {{ .Type }} </td>
+                        <td> {{ .Size }} </td>
+                    </tr>
+                {{ end }}
+            </tbody>
+        </table>
+        </pre>
+    </body>
+</html>
